@@ -1,0 +1,73 @@
+#!/usr/bin/env python3
+import sys, os, requests, tarfile, shutil
+from urllib.parse import urlparse
+
+# --------- ProgBar ---------
+def ProgressBar(percent, prefix=None, notches=50, numericalpercent=True):
+    out = ""
+    if prefix:
+        out += f"{prefix} "
+    filled = int(round(percent * notches))
+    out += "[" + "#"*filled + "."*(notches-filled) + "]"
+    if numericalpercent:
+        out += f" [{round(percent*100,2)}%]"
+    return out
+# --------------------------
+
+def download_file(url, dest_folder=None):
+    parsed = urlparse(url)
+    filename = os.path.basename(parsed.path)
+    if dest_folder is None:
+        dest_folder = os.getcwd()
+    try:
+        os.makedirs(dest_folder, exist_ok=True)
+    except PermissionError:
+        print(f"⚠️  Cannot write to {dest_folder}, using current folder instead.")
+        dest_folder = os.getcwd()
+    filepath = os.path.join(dest_folder, filename)
+
+    r = requests.get(url, stream=True)
+    total = int(r.headers.get('content-length',0))
+    downloaded = 0
+    print(f"Downloading {filename} to {dest_folder}...")
+    with open(filepath, "wb") as f:
+        for chunk in r.iter_content(1024):
+            f.write(chunk)
+            downloaded += len(chunk)
+            print(ProgressBar(min(downloaded/total,1),"Progress"), end="\r", flush=True)
+    print()
+    return filepath
+
+def install_tar_xz(filepath):
+    if not tarfile.is_tarfile(filepath):
+        print("Not a tar.xz file, skipping install.")
+        return
+    dest = "/usr/local"
+    if not os.access(dest, os.W_OK):
+        print("⚠️  Need sudo to install to /usr/local")
+        print(f"Try: sudo {sys.argv[0]} {filepath} -i")
+        return
+    print(f"Installing {filepath} to /usr/local ...")
+    with tarfile.open(filepath,'r:xz') as tar:
+        tar.extractall(dest)
+    print("✅ Installed to /usr/local!")
+
+def main():
+    if len(sys.argv)<2:
+        print("Usage: fetch <url> [-d folder] [-i install]")
+        return
+    url = sys.argv[1]
+    dest = None
+    install_flag = False
+    for i,arg in enumerate(sys.argv):
+        if arg=="-d" and i+1<len(sys.argv):
+            dest = sys.argv[i+1]
+        if arg=="-i":
+            install_flag=True
+
+    filepath = download_file(url,dest)
+    if install_flag:
+        install_tar_xz(filepath)
+
+if __name__=="__main__":
+    main()
